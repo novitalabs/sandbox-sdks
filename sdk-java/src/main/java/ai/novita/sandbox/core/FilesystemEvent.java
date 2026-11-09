@@ -1,0 +1,2 @@
+package ai.novita.sandbox.core;
+public class FilesystemEvent { private String name; private String type; public String getName(){return name;} public String getType(){return type;} public EventType getEventType(){return EventType.from(type);} public enum EventType { UNKNOWN,CREATE,WRITE,REMOVE,RENAME,CHMOD; static EventType from(String v){if(v==null)return UNKNOWN; String s=v.toUpperCase(java.util.Locale.ROOT); for(EventType e:values())if(e!=UNKNOWN&&s.contains(e.name()))return e; return UNKNOWN;} } }

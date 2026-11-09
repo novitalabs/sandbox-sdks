@@ -1,0 +1,1 @@
+package ai.novita.sandbox.core; import java.util.*; public class GitStatus { private String branch; private List<GitFileStatus> files=new ArrayList<>(); public String getBranch(){return branch;} public void setBranch(String v){branch=v;} public List<GitFileStatus> getFiles(){return files;} }

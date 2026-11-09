@@ -1,0 +1,17 @@
+# Go
+sdk-go/bin/
+sdk-go/dist/
+*.test
+coverage.out
+
+# Java/Maven
+sdk-java/target/
+
+# Editors and local metadata
+.idea/
+.vscode/
+.DS_Store
+
+# Python release validation helpers
+__pycache__/
+*.py[cod]

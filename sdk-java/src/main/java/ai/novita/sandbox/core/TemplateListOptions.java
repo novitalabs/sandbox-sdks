@@ -1,0 +1,2 @@
+package ai.novita.sandbox.core;
+public class TemplateListOptions { private String templateType; private int page,limit; public String getTemplateType(){return templateType;} public TemplateListOptions setTemplateType(String v){templateType=v;return this;} public int getPage(){return page;} public TemplateListOptions setPage(int v){page=v;return this;} public int getLimit(){return limit;} public TemplateListOptions setLimit(int v){limit=v;return this;} }

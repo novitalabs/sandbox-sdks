@@ -1,0 +1,12 @@
+name: Java release
+on:
+  push:
+    tags: ['java-*']
+permissions:
+  contents: write
+jobs:
+  publish:
+    uses: ./.github/workflows/publish.yaml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit

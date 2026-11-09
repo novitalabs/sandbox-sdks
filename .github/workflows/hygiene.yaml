@@ -1,0 +1,21 @@
+name: Repository hygiene
+on:
+  pull_request:
+    branches: [main, alpha, beta]
+  push:
+    branches: [main, alpha, beta]
+permissions:
+  contents: read
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s .github/scripts/tests -v
+      - run: python3 .github/scripts/check_docs.py
+      - run: bash .github/scripts/hygiene-guard.sh
+      - run: bash .github/scripts/install-gitleaks.sh
+      - run: gitleaks detect --no-git --source . --redact --config .gitleaks.toml

@@ -1,0 +1,1 @@
+package ai.novita.sandbox.core; public class PtySize { private int columns,rows; public PtySize(){} public PtySize(int columns,int rows){this.columns=columns;this.rows=rows;} public int getColumns(){return columns;} public PtySize setColumns(int v){columns=v;return this;} public int getRows(){return rows;} public PtySize setRows(int v){rows=v;return this;} }

@@ -1,0 +1,39 @@
+name: Go and Java checks
+on:
+  pull_request:
+    branches: [main, alpha, beta]
+  push:
+    branches: [main, alpha, beta]
+permissions:
+  contents: read
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.25.x', '1.27.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: false
+      - run: go build ./... && go vet ./... && go test -race ./...
+        working-directory: sdk-go
+      - name: Test the Go module from an independent consumer
+        run: |
+          python3 -m unittest discover -s release-smoke-tests -p 'test_local_packages.py'
+          python3 release-smoke-tests/local_packages.py --language go
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+      - run: mvn -B --no-transfer-progress test
+        working-directory: sdk-java
+      - name: Test the installed JAR from an independent consumer
+        run: python3 release-smoke-tests/local_packages.py --language java --maven-cache "$HOME/.m2/repository"

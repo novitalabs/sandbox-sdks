@@ -1,0 +1,12 @@
+name: Go release
+on:
+  push:
+    tags: ['sdk-go/v*']
+permissions:
+  contents: write
+jobs:
+  publish:
+    uses: ./.github/workflows/publish.yaml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit

@@ -1,0 +1,113 @@
+name: Publish validated component
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate tag, branch, package and unused version
+        run: |
+          GITHUB_SHA=$(git rev-parse HEAD) bash .github/scripts/release-gate.sh "$RELEASE_TAG"
+          python3 .github/scripts/release.py check "$RELEASE_TAG" --remote origin --check-registry
+          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+      - name: Verify configured publishing credentials
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+        run: |
+          case "$COMPONENT" in
+            java)
+              : "${MAVEN_GPG_PRIVATE_KEY:?Configure MAVEN_GPG_PRIVATE_KEY}" "${MAVEN_GPG_PASSPHRASE:?Configure MAVEN_GPG_PASSPHRASE}"
+              : "${CENTRAL_USERNAME:?Configure CENTRAL_USERNAME}" "${CENTRAL_TOKEN:?Configure CENTRAL_TOKEN}"
+              ;;
+          esac
+      - run: python3 -m unittest discover -s .github/scripts/tests -v
+      - run: python3 .github/scripts/check_docs.py
+      - run: bash .github/scripts/hygiene-guard.sh
+      - run: bash .github/scripts/install-gitleaks.sh
+      - run: gitleaks detect --no-git --source . --redact --config .gitleaks.toml
+      - uses: actions/setup-go@v5
+        if: env.COMPONENT == 'go'
+        with:
+          go-version: '1.27.x'
+          cache: false
+      - uses: actions/setup-java@v4
+        if: env.COMPONENT == 'java'
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          server-id: release
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          # Maven Central requires signatures for every release channel.
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Build and verify release archives
+        run: bash .github/scripts/build-release.sh
+      - name: Scan distributable contents
+        run: gitleaks detect --no-git --source release-assets --max-archive-depth 3 --redact --config .gitleaks.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.COMPONENT }}-${{ env.VERSION }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 90
+      - name: Pin Maven version for Central publishing
+        if: env.COMPONENT == 'java'
+        run: |
+          curl --fail --silent --show-error --location https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-3.9.16/bin" >> "$GITHUB_PATH"
+          mvn --version
+      - name: Publish Java package and wait for Central publication
+        if: env.COMPONENT == 'java'
+        env:
+          MAVEN_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          cd sdk-java
+          mvn -B --no-transfer-progress -Prelease,central -DskipTests -Dproject.build.outputTimestamp="$SOURCE_DATE_EPOCH" deploy
+      - name: Preserve Java deployment artifacts even after a failure
+        if: always() && env.COMPONENT == 'java'
+        run: |
+          mkdir -p release-assets
+          find sdk-java/target -maxdepth 1 -type f \( -name '*.jar' -o -name '*.asc' \) -exec cp {} release-assets/ \;
+          cp sdk-java/pom.xml "release-assets/novita-sandbox-$VERSION.pom"
+      - uses: actions/upload-artifact@v4
+        if: always() && env.COMPONENT == 'java'
+        with:
+          name: java-deployment-${{ env.VERSION }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 90
+      - name: Verify published package is consumable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: python3 .github/scripts/verify-published.py "$TAG"
+      - name: Create GitHub Release with installable artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/github-release.sh

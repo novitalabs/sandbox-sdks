@@ -1,0 +1,1 @@
+package ai.novita.sandbox.core; import java.util.*; public class GitBranches { private String current; private List<String> local=new ArrayList<>(),remote=new ArrayList<>(); public String getCurrent(){return current;} public void setCurrent(String v){current=v;} public List<String> getLocal(){return local;} public List<String> getRemote(){return remote;} }

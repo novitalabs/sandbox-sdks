@@ -1,0 +1,6 @@
+title = "Public SDK secret policy"
+[extend]
+useDefault = true
+[allowlist]
+description = "Literal ellipsis in private-key documentation examples"
+regexes = ['-----BEGIN PRIVATE KEY-----\.\.\.']

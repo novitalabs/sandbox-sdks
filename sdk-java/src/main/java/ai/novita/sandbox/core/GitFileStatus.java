@@ -1,0 +1,1 @@
+package ai.novita.sandbox.core; public class GitFileStatus { private String path,status; public GitFileStatus(){} public GitFileStatus(String p,String s){path=p;status=s;} public String getPath(){return path;} public String getStatus(){return status;} }

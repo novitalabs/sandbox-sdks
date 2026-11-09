@@ -1,0 +1,1 @@
+package ai.novita.sandbox.core; public class TemplateListResult { private TemplateInfo[] templates; private int total,page,limit,totalPages; public TemplateInfo[] getTemplates(){return templates;} public int getTotal(){return total;} public int getPage(){return page;} public int getLimit(){return limit;} public int getTotalPages(){return totalPages;} }

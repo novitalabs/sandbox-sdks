@@ -1,0 +1,2 @@
+package ai.novita.sandbox.core;
+public class BuildInfo { @com.google.gson.annotations.SerializedName(value="templateID", alternate={"template_id"}) private String templateID; @com.google.gson.annotations.SerializedName(value="buildID", alternate={"build_id"}) private String buildID; private String name,status; public String getTemplateId(){return templateID;} public String getBuildId(){return buildID;} public String getName(){return name;} public String getStatus(){return status;} }
