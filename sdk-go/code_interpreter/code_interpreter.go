@@ -3,7 +3,7 @@
 //
 // Use the root novita package as the default entrypoint. The returned Sandbox
 // embeds the core sandbox so that lifecycle, filesystem and command APIs stay
-// available. Import novita from github.com/novitalabs/sandbox-sdks/sdk-go/v2:
+// available. Import novita from github.com/novitalabs/sandbox-sdks/sdk-go:
 //
 //	client, err := novita.New(nil)
 //	if err != nil {

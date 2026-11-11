@@ -33,7 +33,7 @@ The SDK lives in the `sdk-go` directory of the
 [sandbox-sdks](https://github.com/novitalabs/sandbox-sdks) repository. Install it with:
 
 ```bash
-go get github.com/novitalabs/sandbox-sdks/sdk-go/v2
+go get github.com/novitalabs/sandbox-sdks/sdk-go
 ```
 
 ## Quick start
@@ -54,8 +54,8 @@ import (
 	"fmt"
 	"log"
 
-	novita "github.com/novitalabs/sandbox-sdks/sdk-go/v2"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	novita "github.com/novitalabs/sandbox-sdks/sdk-go"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 func main() {
@@ -130,7 +130,7 @@ For streaming output, pass `code_interpreter.RunCodeOpts` with `OnStdout` and
 types; sandbox creation and connection still go through the facade.
 
 Desktop creation can configure its display without exposing untyped maps
-(import `github.com/novitalabs/sandbox-sdks/sdk-go/v2/desktop`):
+(import `github.com/novitalabs/sandbox-sdks/sdk-go/desktop`):
 
 ```go
 desktopSandbox, err := client.Desktop.CreateWithOptions(ctx, desktop.CreateOptions{

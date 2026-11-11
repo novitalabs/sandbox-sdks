@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 func TestNewExposesAllNamespaces(t *testing.T) {

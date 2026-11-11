@@ -6,9 +6,9 @@ package novita
 import (
 	"context"
 
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/code_interpreter"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/desktop"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/code_interpreter"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/desktop"
 )
 
 // Novita is the high-level SDK facade. Its namespaces share the connection

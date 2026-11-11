@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 func TestLaunchRetainsPIDAndReleasesStream(t *testing.T) {

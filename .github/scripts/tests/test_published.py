@@ -18,8 +18,8 @@ published = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(published)
 
 class PublishedGoModule(unittest.TestCase):
-    module = 'github.com/novitalabs/sandbox-sdks/sdk-go/v2'
-    version = 'v2.1.2-alpha.1'
+    module = 'github.com/novitalabs/sandbox-sdks/sdk-go'
+    version = 'v0.0.1-alpha.1'
     token = 'fixture-private-go-token'
 
     def setUp(self):
@@ -37,9 +37,9 @@ class PublishedGoModule(unittest.TestCase):
         self.assertTrue(kwargs['capture_output'], 'tool output must not leak credentials')
         self.assertTrue(kwargs['text'])
         self.calls.append((args, kwargs))
-        directory = cache / 'github.com/novitalabs/sandbox-sdks/sdk-go/v2@v2.1.2-alpha.1'
+        directory = cache / 'github.com/novitalabs/sandbox-sdks/sdk-go@v0.0.1-alpha.1'
         (directory / 'core').mkdir(parents=True)
-        (directory / 'core/connection_config.go').write_text('package core\nconst SDKVersion = "2.1.2-alpha.1"\n')
+        (directory / 'core/connection_config.go').write_text('package core\nconst SDKVersion = "0.0.1-alpha.1"\n')
         data = {'Path': self.module, 'Version': self.version, 'Dir': str(directory),
                 'Info': str(cache / 'cache/download/module.info'),
                 'GoMod': str(cache / 'cache/download/module.mod'),
@@ -50,7 +50,7 @@ class PublishedGoModule(unittest.TestCase):
     def run_main(self, env, download=None, output=None):
         output = output if output is not None else io.StringIO()
         with patch.dict(os.environ, env, clear=True), \
-                patch.object(sys, 'argv', ['verify-published.py', 'sdk-go/v2.1.2-alpha.1']), \
+                patch.object(sys, 'argv', ['verify-published.py', 'sdk-go/v0.0.1-alpha.1']), \
                 patch.object(published.subprocess, 'run', side_effect=download or self.download), \
                 redirect_stdout(output):
             published.main()
@@ -124,7 +124,7 @@ class PublishedGoModule(unittest.TestCase):
         self.assertNotIn('Verified', output.getvalue())
 
     def test_downloaded_module_metadata_must_match_tag(self):
-        invalid = [{'Path': 'github.com/someone/another/v2'}, {'Version': 'v2.1.2'},
+        invalid = [{'Path': 'github.com/someone/another'}, {'Version': 'v0.0.1'},
                    {'Replace': {'Path': '/fixture/local'}}, {'Error': 'remote module unavailable'},
                    {'Dir': '/fixture/existing-cache'}]
         for change in invalid:
@@ -141,7 +141,7 @@ class PublishedGoModule(unittest.TestCase):
         def corrupt(args, **kwargs):
             result = self.download(args, **kwargs)
             directory = pathlib.Path(json.loads(result.stdout)['Dir'])
-            (directory / 'core/connection_config.go').write_text('package core\nconst SDKVersion = "2.1.2"\n')
+            (directory / 'core/connection_config.go').write_text('package core\nconst SDKVersion = "0.0.1"\n')
             return result
         with self.assertRaises(ValueError):
             self.run_main({'REPOSITORY_PRIVATE': 'false'}, corrupt)

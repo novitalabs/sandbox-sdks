@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	novita "github.com/novitalabs/sandbox-sdks/sdk-go/v2"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	novita "github.com/novitalabs/sandbox-sdks/sdk-go"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 func main() {

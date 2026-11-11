@@ -15,7 +15,7 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-GO_MODULE = "github.com/novitalabs/sandbox-sdks/sdk-go/v2"
+GO_MODULE = "github.com/novitalabs/sandbox-sdks/sdk-go"
 
 
 def local_environment(live=False):

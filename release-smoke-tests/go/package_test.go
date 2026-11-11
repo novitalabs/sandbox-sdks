@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	novita "github.com/novitalabs/sandbox-sdks/sdk-go/v2"
-	interpreter "github.com/novitalabs/sandbox-sdks/sdk-go/v2/code_interpreter"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	novita "github.com/novitalabs/sandbox-sdks/sdk-go"
+	interpreter "github.com/novitalabs/sandbox-sdks/sdk-go/code_interpreter"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 // These tests consume the SDK's public facade from a separate module, like a customer.

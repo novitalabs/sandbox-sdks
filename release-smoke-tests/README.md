@@ -30,7 +30,7 @@ The script creates empty Maven settings and does not read personal registry cred
 
 | Language | SDK artifact | Consumer dependency | Source isolation |
 | --- | --- | --- | --- |
-| Go | Standard module-proxy `.mod`, `.info` and `.zip` files | Independent `go.mod` requiring `github.com/novitalabs/sandbox-sdks/sdk-go/v2` | Disables go.work, rejects replace directives, uses a fresh GOMODCACHE and records `go list -m -json` provenance |
+| Go | Standard module-proxy `.mod`, `.info` and `.zip` files | Independent `go.mod` requiring `github.com/novitalabs/sandbox-sdks/sdk-go` | Disables go.work, rejects replace directives, uses a fresh GOMODCACHE and records `go list -m -json` provenance |
 | Java | Maven-built JAR and POM | Independent `pom.xml` with `ai.novita:novita-sandbox` | Builds the SDK and consumer separately; asserts classes come from a JAR and verifies its embedded version |
 
 Packages use the version declared by the current branch. The script reads main, alpha and beta metadata automatically; tests require no tags. Go modules distribute source archives that customers compile in their own projects, so this test verifies that installation path.
@@ -86,7 +86,7 @@ For Go, set `GO_SDK_VERSION` to the published module version. Use the normal
 proxy and an isolated cache, with no replace directive:
 
 ```bash
-GOWORK=off go get github.com/novitalabs/sandbox-sdks/sdk-go/v2@"$GO_SDK_VERSION"
+GOWORK=off go get github.com/novitalabs/sandbox-sdks/sdk-go@"$GO_SDK_VERSION"
 GOWORK=off go test -count=1 -v ./...
 ```
 

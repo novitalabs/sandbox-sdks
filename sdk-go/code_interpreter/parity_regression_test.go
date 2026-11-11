@@ -3,7 +3,7 @@ package code_interpreter
 import (
 	"context"
 	"errors"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 	"io"
 	"net/http"
 	"net/http/httptest"
