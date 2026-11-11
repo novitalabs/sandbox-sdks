@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 COMPONENTS = {
-    "sdk-go/v": ("go", "sdk-go", "github.com/novitalabs/sandbox-sdks/sdk-go/v2"),
+    "sdk-go/v": ("go", "sdk-go", "github.com/novitalabs/sandbox-sdks/sdk-go"),
     "java-": ("java", "sdk-java", "ai.novita:novita-sandbox"),
 }
 
@@ -31,8 +31,8 @@ def describe(tag):
             channel = (match[2] or "stable") if match else None
             if channel is None:
                 raise ValueError("Invalid version: use SemVer for Go and Java")
-            if component == "go" and version.split(".")[0] != "2":
-                raise ValueError("Go tag major must match the /v2 module")
+            if component == "go" and int(version.split(".")[0]) >= 2:
+                raise ValueError("Go tag major v2 or later requires a versioned module path")
             return dict(tag=tag, prefix=prefix, component=component, directory=directory,
                         package=package, version=version, channel=channel,
                         branch={"stable": "main", "alpha": "alpha", "beta": "beta", "rc": "alpha"}[channel],

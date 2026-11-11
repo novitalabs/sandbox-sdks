@@ -28,7 +28,7 @@ const (
 	// SDKName is reported to the API for telemetry/version gating.
 	SDKName = "sdk_go"
 	// SDKVersion is the version of this Go SDK.
-	SDKVersion = "2.1.2-alpha.3"
+	SDKVersion = "0.0.1"
 
 	// EnvdPort is the port envd listens on inside a sandbox.
 	EnvdPort = 49983

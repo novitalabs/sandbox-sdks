@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 // JupyterPort is the port the in-sandbox Jupyter server listens on.

@@ -2,7 +2,7 @@
 
 | Component | Package | Tag example |
 | --- | --- | --- |
-| Go | github.com/novitalabs/sandbox-sdks/sdk-go/v2 | sdk-go/v2.1.2 |
+| Go | github.com/novitalabs/sandbox-sdks/sdk-go | sdk-go/v0.0.1 |
 | Java | ai.novita:novita-sandbox | java-2.1.2-alpha.5 |
 
 Stable versions come from main, beta versions from beta, and alpha/rc versions

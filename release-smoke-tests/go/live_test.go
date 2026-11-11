@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	novita "github.com/novitalabs/sandbox-sdks/sdk-go/v2"
-	interpreter "github.com/novitalabs/sandbox-sdks/sdk-go/v2/code_interpreter"
-	"github.com/novitalabs/sandbox-sdks/sdk-go/v2/core"
+	novita "github.com/novitalabs/sandbox-sdks/sdk-go"
+	interpreter "github.com/novitalabs/sandbox-sdks/sdk-go/code_interpreter"
+	"github.com/novitalabs/sandbox-sdks/sdk-go/core"
 )
 
 // Opt-in only: creates one billable sandbox, then kills it even after a test failure.

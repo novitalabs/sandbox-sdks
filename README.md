@@ -6,7 +6,7 @@ of their respective ecosystems.
 
 ## SDKs
 
-- [Go SDK](sdk-go/README.md) — module `github.com/novitalabs/sandbox-sdks/sdk-go/v2`
+- [Go SDK](sdk-go/README.md) — module `github.com/novitalabs/sandbox-sdks/sdk-go`
 - [Java SDK](sdk-java/README.md) — Maven artifact `ai.novita:novita-sandbox`
 
 Set `NOVITA_API_KEY` before creating a client. The default Novita Sandbox domain is

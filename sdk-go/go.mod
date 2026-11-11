@@ -1,4 +1,4 @@
-module github.com/novitalabs/sandbox-sdks/sdk-go/v2
+module github.com/novitalabs/sandbox-sdks/sdk-go
 
 go 1.25.0
 
