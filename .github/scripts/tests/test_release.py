@@ -1,4 +1,5 @@
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -59,6 +60,37 @@ class ReleaseContract(unittest.TestCase):
             self.assertNotEqual(self.invoke("check", "sdk-go/v0.0.3-alpha.1", cwd=root).returncode, 0)
             git("checkout", "-q", "main")
             self.assertEqual(self.invoke("check", "sdk-go/v0.0.1", "--commit", main, cwd=root).returncode, 0)
+
+    def test_release_gate_rejects_checkout_different_from_tag_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+
+            def git(*args):
+                result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+            git("init", "-q", "-b", "main")
+            git("config", "user.name", "Release Test")
+            git("config", "user.email", "test@example.com")
+            (root / "sdk-go/core").mkdir(parents=True)
+            (root / "sdk-go/go.mod").write_text("module github.com/novitalabs/sandbox-sdks/sdk-go\n")
+            (root / "sdk-go/core/connection_config.go").write_text('const SDKVersion = "0.0.1"\n')
+            git("add", ".")
+            git("commit", "-qm", "tagged source")
+            git("tag", "-a", "sdk-go/v0.0.1", "-m", "Go SDK v0.0.1")
+            (root / "extra.txt").write_text("different source\n")
+            git("add", ".")
+            git("commit", "-qm", "same metadata, different source")
+            git("switch", "-q", "-c", "sdk-go/v0.0.1")
+            remote = root / "remote.git"
+            git("clone", "--bare", ".", str(remote))
+            git("remote", "add", "origin", str(remote))
+
+            env = dict(os.environ, GITHUB_ENV=str(root / "github-env"))
+            result = subprocess.run(["bash", str(SCRIPTS / "release-gate.sh"), "sdk-go/v0.0.1"],
+                                    cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("tag target does not match checkout", result.stderr)
 
 class ArtifactContract(unittest.TestCase):
     def invoke(self, tag, root):

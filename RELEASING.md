@@ -52,9 +52,9 @@ write access. CI on fork pull requests requires no secrets.
 
 The release workflows reject invalid tags, mismatched coordinates/versions and
 already-published Java versions. They build/test the component, verify archives,
-scan distributable contents, publish, compare public registry bytes and retain
-artifacts for 90 days. Java publication waits until Central reports published.
-No release workflow is triggered by a normal branch push.
+scan distributable contents, publish and retain artifacts for 90 days. Java
+publication waits until Central reports published and its registry bytes match
+the build. No release workflow is triggered by a normal branch push.
 
 If upload succeeds but verification or GitHub Release creation fails, inspect
 the existing registry artifacts and recover using the original workflow's
