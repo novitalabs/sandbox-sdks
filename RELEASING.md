@@ -19,8 +19,10 @@ pushing its component tag. Configure GitHub rulesets to restrict tag creation
 and block tag updates/deletions; local hooks alone cannot enforce policy.
 
 Go tags make source modules downloadable. Public installation uses the normal
-Go proxy/checksum service without GitHub credentials. The workflow verifies an
-actual module download in a fresh cache before announcing the GitHub Release.
+Go proxy/checksum service without GitHub credentials. The Go team verifies
+module availability separately after tagging; proxy propagation does not block
+the GitHub Release. An existing immutable tag can be published with the manual
+Publish validated component workflow if its original run failed.
 
 ## Installing a Java prerelease
 
