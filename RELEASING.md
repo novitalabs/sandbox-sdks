@@ -19,8 +19,10 @@ pushing its component tag. Configure GitHub rulesets to restrict tag creation
 and block tag updates/deletions; local hooks alone cannot enforce policy.
 
 Go tags make source modules downloadable. Public installation uses the normal
-Go proxy/checksum service without GitHub credentials. The workflow verifies an
-actual module download in a fresh cache before announcing the GitHub Release.
+Go proxy/checksum service without GitHub credentials. The Go team verifies
+module availability separately after tagging; proxy propagation does not block
+the GitHub Release. An existing immutable tag can be published with the manual
+Publish validated component workflow if its original run failed.
 
 ## Installing a Java prerelease
 
@@ -50,9 +52,9 @@ write access. CI on fork pull requests requires no secrets.
 
 The release workflows reject invalid tags, mismatched coordinates/versions and
 already-published Java versions. They build/test the component, verify archives,
-scan distributable contents, publish, compare public registry bytes and retain
-artifacts for 90 days. Java publication waits until Central reports published.
-No release workflow is triggered by a normal branch push.
+scan distributable contents, publish and retain artifacts for 90 days. Java
+publication waits until Central reports published and its registry bytes match
+the build. No release workflow is triggered by a normal branch push.
 
 If upload succeeds but verification or GitHub Release creation fails, inspect
 the existing registry artifacts and recover using the original workflow's

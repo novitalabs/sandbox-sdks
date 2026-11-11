@@ -5,6 +5,12 @@ on:
       tag:
         required: true
         type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable component tag to publish
+        required: true
+        type: string
 permissions:
   contents: write
 concurrency:
@@ -18,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -102,10 +108,8 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
           retention-days: 90
-      - name: Verify published package is consumable
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+      - name: Verify published Java package is consumable
+        if: env.COMPONENT == 'java'
         run: python3 .github/scripts/verify-published.py "$TAG"
       - name: Create GitHub Release with installable artifacts
         env:
