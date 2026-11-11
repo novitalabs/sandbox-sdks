@@ -10,7 +10,7 @@ of their respective ecosystems.
 - [Java SDK](sdk-java/README.md) — Maven artifact `ai.novita:novita-sandbox`
 
 Set `NOVITA_API_KEY` before creating a client. The default Novita Sandbox domain is
-`sandbox.novita.ai`; applications can override it through the SDK options or
+`us-phx-1.sandbox.novita.ai`; applications can override it through the SDK options or
 `NOVITA_DOMAIN` when they need to target another environment.
 
 The source repository is [novitalabs/sandbox-sdks](https://github.com/novitalabs/sandbox-sdks).
