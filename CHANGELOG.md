@@ -10,6 +10,9 @@
   `resize`/`resizeAsync` (Java) now take absolute CPU, memory and disk totals and
   return per-resource results; the old `/hotplug-memory` call is removed. See the
   migration notes in each SDK README.
+- `pause` now raises on conflicts other than an already paused sandbox, including
+  a pause issued while a resize is in flight; both SDKs match the Python and
+  JavaScript contract.
 - Restrict this repository to the Go and Java SDKs and their build, test and release tooling.
 - Keep the Java package coordinates and version; initialize the Go module at
   `github.com/novitalabs/sandbox-sdks/sdk-go` with version `v0.0.1`.

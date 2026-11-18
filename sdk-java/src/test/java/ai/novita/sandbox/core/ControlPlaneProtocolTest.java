@@ -595,9 +595,11 @@ class ControlPlaneProtocolTest {
     @Test
     void pauseReportsFalseOnConflict() throws Exception {
         startServer();
-        // Modern: 409 means already paused, reported as false like JS/Python.
+        // Modern: an already paused conflict is reported as false like JS/Python.
         enqueueConnectInfo(server.url("/").toString(), "0.5.7");
-        server.enqueue(new MockResponse().setResponseCode(409));
+        server.enqueue(new MockResponse().setResponseCode(409)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"code\":409,\"message\":\"Sandbox sb-1 is already paused\"}"));
 
         assertFalse(connectSandbox().pause());
 

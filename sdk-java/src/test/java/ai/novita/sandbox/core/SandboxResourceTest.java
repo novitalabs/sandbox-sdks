@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -258,6 +259,76 @@ class SandboxResourceTest {
         assertNull(result.getMemory().getPrevious());
         assertNull(result.getMemory().getCurrent());
         assertEquals("record_pending", result.getMemory().getReason());
+    }
+
+    @Test
+    void pauseSurfacesAResizeConflict() throws Exception {
+        startServer();
+        server.enqueue(createdSandbox());
+        server.enqueue(json(409, "{\"code\":409,\"message\":\"Sandbox sb-1 is being resized\"}"));
+
+        Sandbox sandbox = create("base", options());
+        SandboxException error = assertThrows(SandboxException.class, sandbox::pause);
+        assertTrue(error.getMessage().contains("409"));
+        assertTrue(error.getMessage().contains("being resized"));
+    }
+
+    @Test
+    void pauseKeepsEscapedAlreadyPausedAsNoOp() throws Exception {
+        startServer();
+        server.enqueue(createdSandbox());
+        server.enqueue(json(409, "{\"code\":409,\"message\":\"Sandbox sb-1 is already\\u0020paused\"}"));
+
+        Sandbox sandbox = create("base", options());
+        assertFalse(sandbox.pause());
+    }
+
+    @Test
+    void pauseSurfacesResizeConflictWhenAnotherFieldMentionsAlreadyPaused() throws Exception {
+        startServer();
+        server.enqueue(createdSandbox());
+        server.enqueue(json(409, "{\"code\":409,\"message\":\"Sandbox sb-1 is being resized\","
+                + "\"previousError\":\"already paused\"}"));
+
+        Sandbox sandbox = create("base", options());
+        SandboxException error = assertThrows(SandboxException.class, sandbox::pause);
+        assertTrue(error.getMessage().contains("being resized"));
+    }
+
+    @Test
+    void pauseRaisesWhenTheConflictMessageIsUnusable() throws Exception {
+        startServer();
+        List<String> bodies = List.of(
+                "{\"reason\":\"being resized\",\"previousError\":\"already paused\"}",
+                "{\"message\":\"\",\"previousError\":\"already paused\"}",
+                "{\"message\":null,\"previousError\":\"already paused\"}",
+                "{\"message\":123,\"previousError\":\"already paused\"}");
+        for (String body : bodies) {
+            server.enqueue(createdSandbox());
+            server.enqueue(json(409, body));
+            Sandbox sandbox = create("base", options());
+            SandboxException error = assertThrows(SandboxException.class, sandbox::pause);
+            assertTrue(error.getMessage().contains("409"));
+        }
+    }
+
+    @Test
+    void pauseRejectsMalformedConflictJson() throws Exception {
+        startServer();
+        List<String> bodies = List.of(
+                "{\"message\":\"Sandbox sb-1 is being resized\",\"previousError\":\"already paused\"",
+                "{'message':'already paused'}",
+                "{message:\"already paused\"}",
+                "{\"message\":\"already paused\"/*comment*/}",
+                "{\"message\":\"already paused\",\"extra\":TRUE}",
+                "{\"message\":\"already paused\n\"}");
+        for (String body : bodies) {
+            server.enqueue(createdSandbox());
+            server.enqueue(json(409, body));
+            Sandbox sandbox = create("base", options());
+            SandboxException error = assertThrows(SandboxException.class, sandbox::pause);
+            assertTrue(error.getMessage().contains("409"));
+        }
     }
 
     @Test

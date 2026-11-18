@@ -191,6 +191,7 @@ try (Novita novita = Novita.create(opts)) {
 A resize result reports each requested resource separately with status
 `applied`, `skipped`, `failed` or `unknown`; a partial result is not an error.
 Totals the node does not confirm are `null`. Resources require a modern cluster.
+Pausing while a resize is in flight raises a conflict; an already paused sandbox still returns `false`.
 
 The previous incremental memory-only `resize(int)`/`resizeAsync(int)` entry
 points are removed. `resize` now sets absolute totals and returns per-resource

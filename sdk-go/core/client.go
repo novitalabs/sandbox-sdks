@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // Client is the control-plane REST client. It talks to the Novita Sandbox API
@@ -444,7 +445,16 @@ func (c *Client) PauseSandboxWithOptions(ctx context.Context, id string, opts Pa
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusConflict {
-		return false, nil
+		bodyBytes, readErr := io.ReadAll(res.Body)
+		if readErr != nil {
+			return false, &SandboxError{Message: "failed to read pause response", StatusCode: res.StatusCode, Err: readErr}
+		}
+		// Only an already paused sandbox is a no-op; any other conflict,
+		// including a pause blocked by an in-flight resize, must surface.
+		if isAlreadyPausedConflict(bodyBytes) {
+			return false, nil
+		}
+		return false, &SandboxError{Message: "409 " + errorMessageFromBody(bodyBytes), StatusCode: res.StatusCode}
 	}
 	if err := c.checkResponse(res); err != nil {
 		return false, err
@@ -761,6 +771,29 @@ func (c *Client) checkResponse(res *http.Response) error {
 		return &NotEnoughSpaceError{}
 	default:
 		return &SandboxError{Message: message, StatusCode: res.StatusCode}
+	}
+}
+
+// isAlreadyPausedConflict classifies a 409 body. A JSON object only counts
+// when its non-empty string message says the sandbox is already paused;
+// unrelated fields can never suppress a conflict.
+func isAlreadyPausedConflict(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	var payload interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		// Malformed payloads cannot confirm the no-op; surface the conflict.
+		return false
+	}
+	switch value := payload.(type) {
+	case map[string]interface{}:
+		message, ok := value["message"].(string)
+		return ok && strings.Contains(strings.ToLower(message), "already paused")
+	case string:
+		return strings.Contains(strings.ToLower(value), "already paused")
+	default:
+		return false
 	}
 }
 

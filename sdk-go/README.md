@@ -223,6 +223,7 @@ if err := createAndResize(ctx, client); err != nil {
 A resize result reports each requested resource separately with status
 `applied`, `skipped`, `failed` or `unknown`; a partial result is not an error.
 Totals the node does not confirm are `nil`. Resources require a modern cluster.
+Pausing while a resize is in flight raises a conflict; an already paused sandbox still returns `false`.
 
 The previous memory-only `ResizeSandbox`/`Resize` entry point is removed. The
 replacement sets absolute totals and reports each requested resource:
