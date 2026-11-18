@@ -160,6 +160,49 @@ supports shallow clone depth. Credentials are supplied through the command
 environment and are not stored in the repository. Existing no-argument push
 and pull methods remain available.
 
+## Sandbox resources
+
+Request absolute CPU, memory and disk totals when creating a sandbox, or change
+them on a running sandbox. Memory and disk are user-facing GiB values; the SDK
+sends the MiB values the API expects. A total must be an exact number of MiB, so
+a template's non-integral size can be expressed as its exact MiB equivalent.
+
+```java
+SandboxOpts opts = new SandboxOpts();
+opts.setResources(new SandboxResourceTargets()
+        .setCpu(4)
+        .setMemoryGiB(2)
+        .setDiskGiB(4));
+
+try (Novita novita = Novita.create(opts)) {
+    Sandbox sandbox = novita.createSandbox("base");
+    try {
+        SandboxResizeResult result = sandbox.resize(new SandboxResourceTargets()
+                .setCpu(6)
+                .setMemoryGiB(4));
+        System.out.println(result.getCpu().getStatus() + " " + result.getCpu().getUnit());
+        System.out.println(result.getMemory().getCurrent()); // GiB; null when unconfirmed
+    } finally {
+        sandbox.kill();
+    }
+}
+```
+
+A resize result reports each requested resource separately with status
+`applied`, `skipped`, `failed` or `unknown`; a partial result is not an error.
+Totals the node does not confirm are `null`. Resources require a modern cluster.
+
+The previous incremental memory-only `resize(int)`/`resizeAsync(int)` entry
+points are removed. `resize` now sets absolute totals and returns per-resource
+results, so compute the total you want and read each result item:
+
+```java
+// Removed: extended memory by 512 MiB.
+// sandbox.resize(512);
+
+SandboxResizeResult result = sandbox.resize(new SandboxResourceTargets().setMemoryGiB(4));
+```
+
 ## Long-running sandboxes
 
 Set `long_running` to the exact string `"true"` in `SandboxOpts.metadata` to omit

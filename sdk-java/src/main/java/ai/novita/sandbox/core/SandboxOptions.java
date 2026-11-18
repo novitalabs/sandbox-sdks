@@ -24,4 +24,5 @@ public class SandboxOptions extends SandboxOpts {
     public SandboxOptions volumeMounts(Map<String,String> value){setVolumeMounts(value);return this;}
     public SandboxOptions mcp(Map<String,Object> value){setMcp(value);return this;}
     public SandboxOptions nodeId(String value){setNodeId(value);return this;}
+    public SandboxOptions resources(SandboxResourceTargets value){setResources(value);return this;}
 }

@@ -279,6 +279,8 @@ class ApiClient implements AutoCloseable {
 
     SandboxInfo createSandbox(String template, SandboxOpts opts) throws SandboxException {
         SandboxOpts options = opts == null ? new SandboxOpts() : opts;
+        // Validate resource targets before any request, even on legacy domains.
+        JsonObject resourceBody = options.getResources() == null ? null : options.getResources().toApiBody();
         JsonObject payload = new JsonObject();
         // The control-plane NewSandbox schema uses templateID. The JS/Python
         // SDKs expose this as the friendly template argument, but the wire
@@ -289,6 +291,9 @@ class ApiClient implements AutoCloseable {
             // Legacy clusters reject the modern fields outright.
             if (options.getMcp() != null) {
                 throw new SandboxException("Sandbox.create mcp is not supported on legacy domains");
+            }
+            if (resourceBody != null) {
+                throw new SandboxException("Sandbox.create resources is not supported on legacy domains");
             }
             NetworkOptions network=options.getNetwork();
             if(network!=null){
@@ -358,16 +363,35 @@ class ApiClient implements AutoCloseable {
             if (options.getNodeId() != null && !options.getNodeId().isEmpty()) {
                 payload.addProperty("nodeID", options.getNodeId());
             }
+            if (resourceBody != null) {
+                payload.add("resources", resourceBody);
+            }
+        }
+
+        // Resource-aware creation uses its own endpoint. The backend allows six
+        // minutes for it, but an explicit request timeout still wins.
+        String endpoint = "/sandboxes";
+        OkHttpClient createClient = httpClient;
+        if (resourceBody != null) {
+            endpoint = "/sandboxes/custom";
+            if (!options.hasExplicitRequestTimeout()) {
+                createClient = httpClient.newBuilder()
+                        .connectTimeout(360, TimeUnit.SECONDS)
+                        .readTimeout(360, TimeUnit.SECONDS)
+                        .writeTimeout(360, TimeUnit.SECONDS)
+                        .callTimeout(360, TimeUnit.SECONDS)
+                        .build();
+            }
         }
 
         RequestBody body = RequestBody.create(gson.toJson(payload), JSON);
         Request request = new Request.Builder()
-                .url(baseUrl + "/sandboxes")
+                .url(baseUrl + endpoint)
                 .headers(headers)
                 .post(body)
                 .build();
 
-        try (Response response = AsyncSupport.execute(httpClient.newCall(request))) {
+        try (Response response = AsyncSupport.execute(createClient.newCall(request))) {
             if (!response.isSuccessful()) {
                 throw ApiExceptions.from(response.code(), response.body() == null ? response.message() : response.body().string());
             }
@@ -529,6 +553,44 @@ class ApiClient implements AutoCloseable {
 
     void setTimeout(String sandboxId, int seconds) throws SandboxException {
         JsonObject p = new JsonObject(); p.addProperty("timeout", seconds); postSandbox(sandboxId, "timeout", p);
+    }
+
+    SandboxResizeResult resizeSandbox(String sandboxId, SandboxResourceTargets targets) throws SandboxException {
+        if (targets == null) {
+            throw new InvalidArgumentException("at least one of cpu, memoryGiB or diskGiB is required");
+        }
+        JsonObject payload = targets.toApiBody();
+        Request request = new Request.Builder()
+                .url(baseUrl + "/sandboxes/" + segment(sandboxId) + "/resize")
+                .headers(headers)
+                .post(RequestBody.create(gson.toJson(payload), JSON))
+                .build();
+        try (Response response = AsyncSupport.execute(httpClient.newCall(request))) {
+            if (!response.isSuccessful()) {
+                throw ApiExceptions.from(response.code(), response.body() == null ? response.message() : response.body().string());
+            }
+            String responseBody = response.body() == null ? "" : response.body().string();
+            SandboxResizeResult result;
+            try {
+                result = gson.fromJson(responseBody, SandboxResizeResult.class);
+            } catch (com.google.gson.JsonParseException e) {
+                throw new SandboxException("Invalid resize response", e);
+            }
+            if (result == null) result = new SandboxResizeResult();
+            result.applyUnits();
+            if (targets.getCpu() != null && result.getCpu() == null) {
+                throw new SandboxException("resize response is missing the cpu result");
+            }
+            if (targets.getMemoryGiB() != null && result.getMemory() == null) {
+                throw new SandboxException("resize response is missing the memory result");
+            }
+            if (targets.getDiskGiB() != null && result.getDisk() == null) {
+                throw new SandboxException("resize response is missing the disk result");
+            }
+            return result;
+        } catch (IOException e) {
+            throw AsyncSupport.transportFailure("Failed to resize sandbox", e);
+        }
     }
 
     /**

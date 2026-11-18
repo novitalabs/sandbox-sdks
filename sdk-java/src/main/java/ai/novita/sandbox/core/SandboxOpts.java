@@ -35,6 +35,8 @@ public class SandboxOpts {
     /** Raw MCP server configuration, serialized as the {@code mcp} field. */
     private Map<String, Object> mcp;
     private String nodeId;
+    /** Absolute CPU, memory and disk totals for a new sandbox. */
+    private SandboxResourceTargets resources;
 
     /** Receives method/path request diagnostics. Headers, queries and bodies are omitted. */
     public java.util.function.Consumer<String> getLogger(){return logger;}
@@ -69,6 +71,7 @@ public class SandboxOpts {
         c.volumeMounts=volumeMounts==null?null:new java.util.LinkedHashMap<>(volumeMounts);
         c.mcp=mcp==null?null:new com.google.gson.Gson().fromJson(new com.google.gson.Gson().toJson(mcp),new com.google.gson.reflect.TypeToken<Map<String,Object>>(){}.getType());
         c.nodeId=nodeId;
+        c.resources=resources==null?null:resources.copy();
         return c;
     }
     public SandboxOpts() {
@@ -194,4 +197,14 @@ public class SandboxOpts {
     /** Pins the sandbox to an orchestrator node ({@code nodeID}). */
     public String getNodeId() { return nodeId; }
     public void setNodeId(String nodeId) { this.nodeId = nodeId; }
+
+    /**
+     * Requests absolute CPU, memory and disk totals for the new sandbox. When
+     * set, creation uses the resource-aware endpoint.
+     */
+    public SandboxResourceTargets getResources() { return resources; }
+    public void setResources(SandboxResourceTargets resources) { this.resources = resources; }
+
+    /** Whether the caller configured a request timeout instead of using the SDK default. */
+    boolean hasExplicitRequestTimeout() { return requestTimeoutSeconds != null; }
 }

@@ -175,6 +175,64 @@ codeSandbox, err := client.CodeInterpreter.Connect(ctx, "code-sandbox-id", &core
 desktopSandbox, err := client.Desktop.Connect(ctx, "desktop-sandbox-id", &core.SandboxOpts{Timeout: 300})
 ```
 
+## Sandbox resources
+
+Request absolute CPU, memory and disk totals when creating a sandbox, or change
+them on a running sandbox. Memory and disk are user-facing GiB values; the SDK
+sends the MiB values the API expects. A total must be an exact number of MiB, so
+a template's non-integral size can be expressed as its exact MiB equivalent.
+
+```go
+func createAndResize(ctx context.Context, client *novita.Novita) error {
+	sandbox, err := client.Sandbox.Create(ctx, &core.SandboxOpts{
+		Template: "base",
+		Resources: &core.SandboxResourceTargets{
+			CPU:       4,
+			MemoryGiB: 2,
+			DiskGiB:   4,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	defer sandbox.Kill(context.WithoutCancel(ctx))
+
+	result, err := client.Sandbox.Resize(ctx, sandbox.ID(), core.SandboxResourceTargets{
+		CPU:       6,
+		MemoryGiB: 4,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Println(result.CPU.Status, result.CPU.Unit)
+	if result.CPU.Current != nil {
+		fmt.Println(*result.CPU.Current) // cores
+	}
+	if result.Memory.Current != nil {
+		fmt.Println(*result.Memory.Current) // GiB
+	}
+	return nil
+}
+
+// In main, after novita.New: log the error only once cleanup has run.
+if err := createAndResize(ctx, client); err != nil {
+	log.Fatal(err)
+}
+```
+
+A resize result reports each requested resource separately with status
+`applied`, `skipped`, `failed` or `unknown`; a partial result is not an error.
+Totals the node does not confirm are `nil`. Resources require a modern cluster.
+
+The previous memory-only `ResizeSandbox`/`Resize` entry point is removed. The
+replacement sets absolute totals and reports each requested resource:
+
+```go
+// Removed: extended memory by 512 MiB.
+// client.Sandbox.Resize(ctx, sandbox.ID(), 512)
+
+result, err := client.Sandbox.Resize(ctx, sandbox.ID(), core.SandboxResourceTargets{MemoryGiB: 4})
+```
 
 ## Reset and private traffic tokens
 

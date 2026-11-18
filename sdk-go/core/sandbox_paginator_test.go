@@ -62,7 +62,10 @@ func TestModernOnlySandboxAPIsReturnUnsupportedOnLegacy(t *testing.T) {
 		call func() error
 	}{
 		{"snapshot", func() error { _, err := client.CreateSnapshot(context.Background(), "id"); return err }},
-		{"resize", func() error { return client.ResizeSandbox(context.Background(), "id", 512) }},
+		{"resize", func() error {
+			_, err := client.ResizeSandbox(context.Background(), "id", SandboxResourceTargets{CPU: 2})
+			return err
+		}},
 		{"network", func() error { return client.SetSandboxNetwork(context.Background(), "id", &SandboxNetworkConfig{}) }},
 		{"mount", func() error {
 			_, err := client.MountVolume(context.Background(), "id", VolumeMountOptions{Name: "v", Path: "/data"})
