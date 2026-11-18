@@ -1,7 +1,10 @@
 package ai.novita.sandbox.core;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import okhttp3.*;
 
 import java.io.IOException;
@@ -279,6 +282,8 @@ class ApiClient implements AutoCloseable {
 
     SandboxInfo createSandbox(String template, SandboxOpts opts) throws SandboxException {
         SandboxOpts options = opts == null ? new SandboxOpts() : opts;
+        // Validate resource targets before any request, even on legacy domains.
+        JsonObject resourceBody = options.getResources() == null ? null : options.getResources().toApiBody();
         JsonObject payload = new JsonObject();
         // The control-plane NewSandbox schema uses templateID. The JS/Python
         // SDKs expose this as the friendly template argument, but the wire
@@ -289,6 +294,9 @@ class ApiClient implements AutoCloseable {
             // Legacy clusters reject the modern fields outright.
             if (options.getMcp() != null) {
                 throw new SandboxException("Sandbox.create mcp is not supported on legacy domains");
+            }
+            if (resourceBody != null) {
+                throw new SandboxException("Sandbox.create resources is not supported on legacy domains");
             }
             NetworkOptions network=options.getNetwork();
             if(network!=null){
@@ -358,16 +366,35 @@ class ApiClient implements AutoCloseable {
             if (options.getNodeId() != null && !options.getNodeId().isEmpty()) {
                 payload.addProperty("nodeID", options.getNodeId());
             }
+            if (resourceBody != null) {
+                payload.add("resources", resourceBody);
+            }
+        }
+
+        // Resource-aware creation uses its own endpoint. The backend allows six
+        // minutes for it, but an explicit request timeout still wins.
+        String endpoint = "/sandboxes";
+        OkHttpClient createClient = httpClient;
+        if (resourceBody != null) {
+            endpoint = "/sandboxes/custom";
+            if (!options.hasExplicitRequestTimeout()) {
+                createClient = httpClient.newBuilder()
+                        .connectTimeout(360, TimeUnit.SECONDS)
+                        .readTimeout(360, TimeUnit.SECONDS)
+                        .writeTimeout(360, TimeUnit.SECONDS)
+                        .callTimeout(360, TimeUnit.SECONDS)
+                        .build();
+            }
         }
 
         RequestBody body = RequestBody.create(gson.toJson(payload), JSON);
         Request request = new Request.Builder()
-                .url(baseUrl + "/sandboxes")
+                .url(baseUrl + endpoint)
                 .headers(headers)
                 .post(body)
                 .build();
 
-        try (Response response = AsyncSupport.execute(httpClient.newCall(request))) {
+        try (Response response = AsyncSupport.execute(createClient.newCall(request))) {
             if (!response.isSuccessful()) {
                 throw ApiExceptions.from(response.code(), response.body() == null ? response.message() : response.body().string());
             }
@@ -493,7 +520,15 @@ class ApiClient implements AutoCloseable {
         Request request = new Request.Builder().url(baseUrl + "/sandboxes/" + segment(sandboxId) + "/pause")
                 .headers(headers).post(body).build();
         try (Response response = AsyncSupport.execute(httpClient.newCall(request))) {
-            if (response.code() == 409) return false;
+            if (response.code() == 409) {
+                String conflict = response.body() == null ? response.message() : response.body().string();
+                // Only an already paused sandbox is a no-op; any other conflict,
+                // including a pause blocked by an in-flight resize, must surface.
+                if (isAlreadyPausedConflict(conflict)) {
+                    return false;
+                }
+                throw ApiExceptions.from(response.code(), errorMessage(conflict));
+            }
             if (!response.isSuccessful()) throw ApiExceptions.from(response.code(), response.body() == null ? response.message() : response.body().string());
             return true;
         } catch (IOException e) { throw AsyncSupport.transportFailure("Failed to pause sandbox", e); }
@@ -529,6 +564,44 @@ class ApiClient implements AutoCloseable {
 
     void setTimeout(String sandboxId, int seconds) throws SandboxException {
         JsonObject p = new JsonObject(); p.addProperty("timeout", seconds); postSandbox(sandboxId, "timeout", p);
+    }
+
+    SandboxResizeResult resizeSandbox(String sandboxId, SandboxResourceTargets targets) throws SandboxException {
+        if (targets == null) {
+            throw new InvalidArgumentException("at least one of cpu, memoryGiB or diskGiB is required");
+        }
+        JsonObject payload = targets.toApiBody();
+        Request request = new Request.Builder()
+                .url(baseUrl + "/sandboxes/" + segment(sandboxId) + "/resize")
+                .headers(headers)
+                .post(RequestBody.create(gson.toJson(payload), JSON))
+                .build();
+        try (Response response = AsyncSupport.execute(httpClient.newCall(request))) {
+            if (!response.isSuccessful()) {
+                throw ApiExceptions.from(response.code(), response.body() == null ? response.message() : response.body().string());
+            }
+            String responseBody = response.body() == null ? "" : response.body().string();
+            SandboxResizeResult result;
+            try {
+                result = gson.fromJson(responseBody, SandboxResizeResult.class);
+            } catch (com.google.gson.JsonParseException e) {
+                throw new SandboxException("Invalid resize response", e);
+            }
+            if (result == null) result = new SandboxResizeResult();
+            result.applyUnits();
+            if (targets.getCpu() != null && result.getCpu() == null) {
+                throw new SandboxException("resize response is missing the cpu result");
+            }
+            if (targets.getMemoryGiB() != null && result.getMemory() == null) {
+                throw new SandboxException("resize response is missing the memory result");
+            }
+            if (targets.getDiskGiB() != null && result.getDisk() == null) {
+                throw new SandboxException("resize response is missing the disk result");
+            }
+            return result;
+        } catch (IOException e) {
+            throw AsyncSupport.transportFailure("Failed to resize sandbox", e);
+        }
     }
 
     /**
@@ -750,5 +823,212 @@ class ApiClient implements AutoCloseable {
         httpClient.dispatcher().cancelAll();
         httpClient.dispatcher().executorService().shutdown();
         httpClient.connectionPool().evictAll();
+    }
+
+    /** Validates RFC 8259 JSON syntax; Gson's parser and JsonReader are lenient. */
+    private static JsonElement parseStrictJson(String body) {
+        StrictJson.validate(body);
+        return JsonParser.parseString(body);
+    }
+
+    /** Minimal strict JSON validator used only for 409 conflict classification. */
+    private static final class StrictJson {
+        private static final int MAX_DEPTH = 512;
+        private final String text;
+        private int pos;
+        private int depth;
+
+        private StrictJson(String text) {
+            this.text = text;
+        }
+
+        static void validate(String text) {
+            StrictJson parser = new StrictJson(text);
+            parser.skipWhitespace();
+            parser.parseValue();
+            parser.skipWhitespace();
+            if (!parser.atEnd()) throw parser.error("trailing content");
+        }
+
+        private boolean atEnd() {
+            return pos >= text.length();
+        }
+
+        private JsonSyntaxException error(String message) {
+            return new JsonSyntaxException(message + " at offset " + pos);
+        }
+
+        private void skipWhitespace() {
+            while (!atEnd()) {
+                char c = text.charAt(pos);
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') pos++;
+                else break;
+            }
+        }
+
+        private void parseValue() {
+            if (atEnd()) throw error("unexpected end");
+            switch (text.charAt(pos)) {
+                case '{': parseObject(); return;
+                case '[': parseArray(); return;
+                case '"': parseString(); return;
+                case 't': expectLiteral("true"); return;
+                case 'f': expectLiteral("false"); return;
+                case 'n': expectLiteral("null"); return;
+                default: parseNumber(); return;
+            }
+        }
+
+        private void parseObject() {
+            enterContainer();
+            pos++;
+            skipWhitespace();
+            if (!atEnd() && text.charAt(pos) == '}') { pos++; depth--; return; }
+            while (true) {
+                skipWhitespace();
+                if (atEnd() || text.charAt(pos) != '"') throw error("expected object key");
+                parseString();
+                skipWhitespace();
+                if (atEnd() || text.charAt(pos) != ':') throw error("expected ':'");
+                pos++;
+                skipWhitespace();
+                parseValue();
+                skipWhitespace();
+                if (atEnd()) throw error("unterminated object");
+                char c = text.charAt(pos);
+                if (c == ',') { pos++; continue; }
+                if (c == '}') { pos++; depth--; return; }
+                throw error("expected ',' or '}'");
+            }
+        }
+
+        private void parseArray() {
+            enterContainer();
+            pos++;
+            skipWhitespace();
+            if (!atEnd() && text.charAt(pos) == ']') { pos++; depth--; return; }
+            while (true) {
+                skipWhitespace();
+                parseValue();
+                skipWhitespace();
+                if (atEnd()) throw error("unterminated array");
+                char c = text.charAt(pos);
+                if (c == ',') { pos++; continue; }
+                if (c == ']') { pos++; depth--; return; }
+                throw error("expected ',' or ']'");
+            }
+        }
+
+        private void parseString() {
+            pos++;
+            while (true) {
+                if (atEnd()) throw error("unterminated string");
+                char c = text.charAt(pos++);
+                if (c == '"') return;
+                if (c == '\\') {
+                    if (atEnd()) throw error("unterminated escape");
+                    char escaped = text.charAt(pos++);
+                    switch (escaped) {
+                        case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't':
+                            break;
+                        case 'u':
+                            for (int i = 0; i < 4; i++) {
+                                if (atEnd() || !isHexDigit(text.charAt(pos++))) {
+                                    throw error("invalid unicode escape");
+                                }
+                            }
+                            break;
+                        default: throw error("invalid escape");
+                    }
+                } else if (c < 0x20) {
+                    throw error("unescaped control character");
+                }
+            }
+        }
+
+        private void parseNumber() {
+            int start = pos;
+            if (!atEnd() && text.charAt(pos) == '-') pos++;
+            if (atEnd()) throw error("invalid number");
+            char c = text.charAt(pos);
+            if (c == '0') {
+                pos++;
+            } else if (c >= '1' && c <= '9') {
+                while (!atEnd() && isDigit(text.charAt(pos))) pos++;
+            } else {
+                throw error("invalid number");
+            }
+            if (!atEnd() && text.charAt(pos) == '.') {
+                pos++;
+                if (atEnd() || !isDigit(text.charAt(pos))) throw error("invalid fraction");
+                while (!atEnd() && isDigit(text.charAt(pos))) pos++;
+            }
+            if (!atEnd() && (text.charAt(pos) == 'e' || text.charAt(pos) == 'E')) {
+                pos++;
+                if (!atEnd() && (text.charAt(pos) == '+' || text.charAt(pos) == '-')) pos++;
+                if (atEnd() || !isDigit(text.charAt(pos))) throw error("invalid exponent");
+                while (!atEnd() && isDigit(text.charAt(pos))) pos++;
+            }
+            if (pos == start) throw error("invalid number");
+        }
+
+        private void enterContainer() {
+            if (++depth > MAX_DEPTH) throw error("nesting too deep");
+        }
+
+        private static boolean isDigit(char c) {
+            return c >= '0' && c <= '9';
+        }
+
+        private static boolean isHexDigit(char c) {
+            return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        }
+
+        private void expectLiteral(String literal) {
+            if (!text.startsWith(literal, pos)) throw error("invalid literal");
+            pos += literal.length();
+        }
+    }
+
+    /** A JSON object only counts when its non-empty string message says already paused. */
+    private static boolean isAlreadyPausedConflict(String body) {
+        if (body == null || body.isEmpty()) return false;
+        try {
+            JsonElement element = parseStrictJson(body);
+            if (element.isJsonObject()) {
+                JsonElement message = element.getAsJsonObject().get("message");
+                return message != null && message.isJsonPrimitive()
+                        && message.getAsJsonPrimitive().isString()
+                        && message.getAsString().toLowerCase(java.util.Locale.ROOT).contains("already paused");
+            }
+            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+                return element.getAsString().toLowerCase(java.util.Locale.ROOT).contains("already paused");
+            }
+            return false;
+        } catch (RuntimeException ignored) {
+            // Malformed payloads cannot confirm the no-op; surface the conflict.
+            return false;
+        }
+    }
+
+    /** Mirrors Go errorMessageFromBody: structured message, JSON string, then raw text. */
+    private static String errorMessage(String body) {
+        if (body == null || body.isEmpty()) return "";
+        try {
+            JsonElement element = parseStrictJson(body);
+            if (element.isJsonObject()) {
+                JsonElement message = element.getAsJsonObject().get("message");
+                if (message != null && message.isJsonPrimitive()
+                        && message.getAsJsonPrimitive().isString() && !message.getAsString().isEmpty()) {
+                    return message.getAsString();
+                }
+            }
+            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+                return element.getAsString();
+            }
+        } catch (RuntimeException ignored) {
+            // Not JSON: use the body verbatim, matching Go's fallback.
+        }
+        return body;
     }
 }

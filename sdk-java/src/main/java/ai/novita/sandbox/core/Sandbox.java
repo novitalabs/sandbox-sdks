@@ -258,12 +258,18 @@ public class Sandbox implements AutoCloseable {
      */
     public boolean pause() throws SandboxException { return client.pauseSandbox(id); }
 
-    /** Extends memory by the requested amount in MiB (modern clusters only). */
-    public void resize(int memoryMiB) throws SandboxException {
-        if (memoryMiB <= 0) throw new SandboxException("memoryMiB must be positive");
+    /**
+     * Changes this sandbox to absolute CPU, memory and disk totals (modern
+     * clusters only).
+     *
+     * <p>Memory and disk targets are GiB values converted to the MiB values the
+     * API expects. Only resources that need to change are applied; the result
+     * reports the outcome of each requested resource, so a resource can be
+     * {@code failed} or {@code unknown} even when the call itself succeeds.
+     */
+    public SandboxResizeResult resize(SandboxResourceTargets targets) throws SandboxException {
         requireModernDomain("Sandbox.resize");
-        JsonObject payload = new JsonObject(); payload.addProperty("requested_size_mib", memoryMiB);
-        client.postSandbox(id, "hotplug-memory", payload);
+        return client.resizeSandbox(id, targets);
     }
 
     public void setTimeout(int seconds) throws SandboxException {
@@ -306,7 +312,7 @@ public class Sandbox implements AutoCloseable {
     }
     public java.util.concurrent.CompletableFuture<Boolean> pauseAsync(){return AsyncSupport.supplyAsync(()->{try{return pause();}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}
     public java.util.concurrent.CompletableFuture<Boolean> killAsync(){return AsyncSupport.supplyAsync(()->{try{return kill();}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}
-    public java.util.concurrent.CompletableFuture<Void> resizeAsync(int memoryMiB){return AsyncSupport.runAsync(()->{try{resize(memoryMiB);}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}
+    public java.util.concurrent.CompletableFuture<SandboxResizeResult> resizeAsync(SandboxResourceTargets targets){return AsyncSupport.supplyAsync(()->{try{return resize(targets);}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}
     public java.util.concurrent.CompletableFuture<Void> setTimeoutAsync(int seconds){return AsyncSupport.runAsync(()->{try{setTimeout(seconds);}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}
     public java.util.concurrent.CompletableFuture<Boolean> resetAsync(){return AsyncSupport.supplyAsync(()->{try{return reset();}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}
     public java.util.concurrent.CompletableFuture<Boolean> resetAsync(ResetOptions options){return AsyncSupport.supplyAsync(()->{try{return reset(options);}catch(Exception e){throw new java.util.concurrent.CompletionException(e);}});}

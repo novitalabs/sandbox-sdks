@@ -23,6 +23,9 @@ type SandboxOpts struct {
 	//
 	// Defaults to 60s, or 30 minutes on legacy domains.
 	RequestTimeoutMs *int
+	// requestTimeoutExplicit records the provenance of an inherited
+	// RequestTimeoutMs. Nil means infer it from the options and environment.
+	requestTimeoutExplicit *bool
 	// Logger receives SDK log messages.
 	Logger Logger
 	// Headers are extra headers attached to every request.
@@ -69,6 +72,11 @@ type SandboxOpts struct {
 
 	// VolumeMounts are volumes to mount into the sandbox.
 	VolumeMounts []SandboxVolumeMount
+
+	// Resources requests absolute CPU, memory and disk totals for the new
+	// sandbox. Memory and disk use GiB; the SDK converts them to the MiB values
+	// the API expects. When set, creation uses the resource-aware endpoint.
+	Resources *SandboxResourceTargets
 
 	// Mcp is the MCP server configuration.
 	Mcp map[string]interface{}

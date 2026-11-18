@@ -381,7 +381,9 @@ func TestClientPauseSandboxStatusSemantics(t *testing.T) {
 		calls++
 		if calls == 1 {
 			// Already paused.
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"code":409,"message":"Sandbox \"sb-1\" is already paused"}`))
 			return
 		}
 		w.WriteHeader(http.StatusOK)

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 )
 
 // Client is the control-plane REST client. It talks to the Novita Sandbox API
@@ -15,6 +17,10 @@ type Client struct {
 	connection *ConnectionConfig
 	http       *http.Client
 	opts       *SandboxOpts
+	// explicitRequestTimeout records whether options or the environment set a
+	// request timeout when this client was built. Capturing it keeps later
+	// environment changes from altering how the client treats its timeout.
+	explicitRequestTimeout bool
 }
 
 type cancelOnCloseBody struct {
@@ -44,11 +50,30 @@ func NewClient(opts *SandboxOpts) (*Client, error) {
 		}
 	}
 
+	explicitRequestTimeout := requestTimeoutConfiguredAtConstruction(opts)
+	if opts != nil && opts.requestTimeoutExplicit != nil {
+		explicitRequestTimeout = *opts.requestTimeoutExplicit
+	}
 	return &Client{
-		connection: connection,
-		http:       &http.Client{},
-		opts:       cloneClientOptions(opts),
+		connection:             connection,
+		http:                   &http.Client{},
+		opts:                   cloneClientOptions(opts),
+		explicitRequestTimeout: explicitRequestTimeout,
 	}, nil
+}
+
+// requestTimeoutConfiguredAtConstruction reports whether options or a valid
+// NOVITA_REQUEST_TIMEOUT set a timeout when the client was constructed.
+func requestTimeoutConfiguredAtConstruction(opts *SandboxOpts) bool {
+	if opts != nil && opts.RequestTimeoutMs != nil {
+		return true
+	}
+	raw := getEnvVar("NOVITA_REQUEST_TIMEOUT")
+	if raw == "" {
+		return false
+	}
+	_, err := strconv.Atoi(raw)
+	return err == nil
 }
 
 // Connection returns the resolved connection configuration.
@@ -58,12 +83,17 @@ func (c *Client) Connection() *ConnectionConfig {
 
 // do performs a control-plane request with the API key and SDK headers applied.
 func (c *Client) do(ctx context.Context, method, path string, query string, body io.Reader) (*http.Response, error) {
+	return c.doWithTimeout(ctx, method, path, query, body, nil)
+}
+
+// doWithTimeout is do with an optional per-request timeout override.
+func (c *Client) doWithTimeout(ctx context.Context, method, path string, query string, body io.Reader, requestTimeoutMs *int) (*http.Response, error) {
 	target := c.connection.APIURL + path
 	if query != "" {
 		target += "?" + query
 	}
 
-	ctx, cancel := c.connection.contextWithTimeout(ctx, nil)
+	ctx, cancel := c.connection.contextWithTimeout(ctx, requestTimeoutMs)
 
 	req, err := http.NewRequestWithContext(ctx, method, target, body)
 	if err != nil {
@@ -108,6 +138,7 @@ type createSandboxRequest struct {
 	Mcp                  map[string]interface{}   `json:"mcp,omitempty"`
 	VolumeMounts         []SandboxVolumeMount     `json:"volumeMounts,omitempty"`
 	NodeID               string                   `json:"nodeID,omitempty"`
+	Resources            map[string]int64         `json:"resources,omitempty"`
 }
 
 // CreateSandbox creates a sandbox and returns the resulting sandbox detail.
@@ -118,6 +149,13 @@ func (c *Client) CreateSandbox(ctx context.Context, opts *SandboxOpts) (*Sandbox
 	validatedSecrets, err := ValidateSecretEnvs(opts.Secrets, opts.EnvVars)
 	if err != nil {
 		return nil, err
+	}
+	var resourceBody map[string]int64
+	if opts.Resources != nil {
+		resourceBody, err = opts.Resources.toAPI()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if opts.Template == "" && opts.Image == "" {
@@ -142,6 +180,8 @@ func (c *Client) CreateSandbox(ctx context.Context, opts *SandboxOpts) (*Sandbox
 			return nil, &UnsupportedError{Operation: "Sandbox.Create secrets", Reason: "requires a modern domain"}
 		case len(opts.VolumeMounts) != 0:
 			return nil, &UnsupportedError{Operation: "Sandbox.Create volume mounts", Reason: "requires a modern domain"}
+		case resourceBody != nil:
+			return nil, &UnsupportedError{Operation: "Sandbox.Create resources", Reason: "requires a modern domain"}
 		}
 	}
 
@@ -178,6 +218,7 @@ func (c *Client) CreateSandbox(ctx context.Context, opts *SandboxOpts) (*Sandbox
 		Mcp:                  opts.Mcp,
 		VolumeMounts:         opts.VolumeMounts,
 		NodeID:               opts.NodeID,
+		Resources:            resourceBody,
 	}
 
 	payload.Secrets = validatedSecrets
@@ -191,7 +232,16 @@ func (c *Client) CreateSandbox(ctx context.Context, opts *SandboxOpts) (*Sandbox
 		return nil, err
 	}
 
-	res, err := c.do(ctx, http.MethodPost, "/sandboxes", "", bytesReader(bodyBytes))
+	endpoint := "/sandboxes"
+	var createTimeoutMs *int
+	if resourceBody != nil {
+		// Resource-aware creation uses its own endpoint, and the backend allows
+		// six minutes for it. An explicit request timeout still wins.
+		endpoint = "/sandboxes/custom"
+		createTimeoutMs = c.resourceCreateTimeout()
+	}
+
+	res, err := c.doWithTimeout(ctx, http.MethodPost, endpoint, "", bytesReader(bodyBytes), createTimeoutMs)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +445,16 @@ func (c *Client) PauseSandboxWithOptions(ctx context.Context, id string, opts Pa
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusConflict {
-		return false, nil
+		bodyBytes, readErr := io.ReadAll(res.Body)
+		if readErr != nil {
+			return false, &SandboxError{Message: "failed to read pause response", StatusCode: res.StatusCode, Err: readErr}
+		}
+		// Only an already paused sandbox is a no-op; any other conflict,
+		// including a pause blocked by an in-flight resize, must surface.
+		if isAlreadyPausedConflict(bodyBytes) {
+			return false, nil
+		}
+		return false, &SandboxError{Message: "409 " + errorMessageFromBody(bodyBytes), StatusCode: res.StatusCode}
 	}
 	if err := c.checkResponse(res); err != nil {
 		return false, err
@@ -408,11 +467,62 @@ func (c *Client) SetSandboxTimeout(ctx context.Context, id string, timeoutMs int
 	}
 	return c.postJSON(ctx, "/sandboxes/"+url.PathEscape(id)+"/timeout", map[string]int64{"timeout": timeoutMs / 1000}, nil)
 }
-func (c *Client) ResizeSandbox(ctx context.Context, id string, memoryMiB int64) error {
+
+// ResizeSandbox changes a running sandbox to absolute CPU, memory and disk
+// totals.
+//
+// Memory and disk targets are GiB values converted to the MiB values the API
+// expects. Only resources that need to change are applied; the result reports
+// the outcome of each requested resource, so a resource can be failed or
+// unknown even when the call itself succeeds.
+func (c *Client) ResizeSandbox(ctx context.Context, id string, targets SandboxResourceTargets) (*SandboxResizeResult, error) {
 	if c.connection.IsLegacyDomain {
-		return &UnsupportedError{Operation: "Sandbox.Resize", Reason: "requires a modern domain"}
+		return nil, &UnsupportedError{Operation: "Sandbox.Resize", Reason: "requires a modern domain"}
 	}
-	return c.postJSON(ctx, "/sandboxes/"+url.PathEscape(id)+"/hotplug-memory", map[string]int64{"requested_size_mib": memoryMiB}, nil)
+	body, err := targets.toAPI()
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.do(ctx, http.MethodPost, "/sandboxes/"+url.PathEscape(id)+"/resize", "", bytesReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if err := c.checkResponse(res); err != nil {
+		return nil, err
+	}
+
+	var wire sandboxResizeWire
+	if err := json.NewDecoder(res.Body).Decode(&wire); err != nil {
+		return nil, &SandboxError{Message: "invalid resize response", Err: err}
+	}
+	result := wire.toResult()
+	if err := result.validateFor(targets); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// hasExplicitRequestTimeout reports whether the caller configured a request
+// timeout when this client was built, instead of using the SDK default.
+func (c *Client) hasExplicitRequestTimeout() bool {
+	return c.explicitRequestTimeout
+}
+
+// resourceCreateTimeout returns the request timeout override for a
+// resource-aware sandbox creation. The backend allows six minutes for it, but
+// an explicit request timeout still wins.
+func (c *Client) resourceCreateTimeout() *int {
+	if c.hasExplicitRequestTimeout() {
+		return nil
+	}
+	timeout := ResourceCreateTimeoutMS
+	return &timeout
 }
 
 // ResetSandbox resets a sandbox to its latest snapshot, matching JS/Python
@@ -661,6 +771,29 @@ func (c *Client) checkResponse(res *http.Response) error {
 		return &NotEnoughSpaceError{}
 	default:
 		return &SandboxError{Message: message, StatusCode: res.StatusCode}
+	}
+}
+
+// isAlreadyPausedConflict classifies a 409 body. A JSON object only counts
+// when its non-empty string message says the sandbox is already paused;
+// unrelated fields can never suppress a conflict.
+func isAlreadyPausedConflict(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	var payload interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		// Malformed payloads cannot confirm the no-op; surface the conflict.
+		return false
+	}
+	switch value := payload.(type) {
+	case map[string]interface{}:
+		message, ok := value["message"].(string)
+		return ok && strings.Contains(strings.ToLower(message), "already paused")
+	case string:
+		return strings.Contains(strings.ToLower(value), "already paused")
+	default:
+		return false
 	}
 }
 

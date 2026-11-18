@@ -133,8 +133,8 @@ func (s *SandboxNamespace) PauseWithOptions(ctx context.Context, id string, opts
 func (s *SandboxNamespace) SetTimeout(ctx context.Context, id string, timeoutMs int64) error {
 	return s.client.SetSandboxTimeout(ctx, id, timeoutMs)
 }
-func (s *SandboxNamespace) Resize(ctx context.Context, id string, memoryMiB int64) error {
-	return s.client.ResizeSandbox(ctx, id, memoryMiB)
+func (s *SandboxNamespace) Resize(ctx context.Context, id string, targets SandboxResourceTargets) (*SandboxResizeResult, error) {
+	return s.client.ResizeSandbox(ctx, id, targets)
 }
 func (s *SandboxNamespace) Reset(ctx context.Context, id string, payload map[string]interface{}) (bool, error) {
 	return s.client.ResetSandbox(ctx, id, payload)
@@ -294,8 +294,13 @@ func (c *Client) inheritOptions(call *SandboxOpts) *SandboxOpts {
 		out.Debug = Bool(cfg.Debug)
 	}
 	if out.RequestTimeoutMs == nil {
+		// Derive the timeout and its provenance from the parent client so a
+		// later environment change cannot alter this call. The provenance keeps
+		// a default timeout from overriding the resource-create default.
 		timeout := cfg.RequestTimeoutMs
 		out.RequestTimeoutMs = &timeout
+		explicit := c.hasExplicitRequestTimeout()
+		out.requestTimeoutExplicit = &explicit
 	}
 	if out.Logger == nil {
 		out.Logger = cfg.Logger
